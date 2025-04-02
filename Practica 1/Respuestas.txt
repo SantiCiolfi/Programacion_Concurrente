@@ -1,0 +1,130 @@
+/*4) Realice una solución concurrente de grano grueso (utilizando <> y/o <await B; S>) para el siguiente problema.
+Un sistema operativo mantiene 5 instancias de un recurso almacenadas en una cola, cuando un proceso necesita
+usar una instancia del recurso la saca de la cola, la usa y cuando termina de usarla la vuelve a depositar.
+*/
+
+colaRecurso C; int libres = 5;
+
+Process Consumidores [id:0..N]{
+	int pos = 0;
+	int recu = 0;
+	while(true){
+		<await (libre > 0); libres-- > //disminuyo la cantidad de recursos disponibles
+		recu = Sacar(C);
+		usarRecurso(recu);
+		Agregar(C, recu);
+		libres ++;
+	}
+}
+
+/* ---------------------------------------------------------------------------------------------------------------
+5)En cada ítem debe realizar una solución concurrente de grano grueso (utilizando <> y/o <await B; S>)
+para el siguiente problema, teniendo en cuenta las condiciones indicadas en el item.
+Existen N personas que deben imprimir un trabajo cada una.
+a) Implemente una solución suponiendo que existe una única impresora compartida por todas las personas,
+y las mismas la deben usar de a una persona a la vez, sin importar el orden. Existe una función Imprimir(documento)
+llamada por la persona que simula el uso de la impresora. Sólo se deben usar los procesos que representan a las Personas.
+*/
+
+boolean impresoraLibre = true;
+
+Process Personas [id: 0..N]{
+	while(true){
+		<await(impresoraLibre); impresoraLibre = false>
+		Imprimir(documento);
+		impresoraLibre = true;
+	}
+}
+
+//b) Modifique la solución de (a) para el caso en que se deba respetar el orden de llegada.
+
+colaEspera C; int Siguiente= -1; //no hace mas falta el booleano listo, ya que hacen fila y operan de a uno en la impresora
+
+Process Personas [id: 0..N]{
+	while(true){
+		<if(Siguiente == -1) Siguiente = id //cola vacia
+		else Agregar(C,id)>; //sino se agrega a la cola
+		<await(Siguiente == id)>;
+		Imprimir(documento);
+		<if(empty(C)) Siguiente = -1 //si esta vacia la marco
+		else Siguiente = Sacar(C)>; //si no esta vacia saca el proximo ID
+	}
+}
+
+//c)Modifique la solución de (a) para el caso en que se deba respetar el orden dado por el identificador del proceso
+//(cuando está libre la impresora, de los procesos que han solicitado su uso la debe usar el que tenga menor identificador).
+
+colaEspera C; int Siguiente= -1;
+
+Process Personas [id: 0..N]{
+	while(true){
+		<if(Siguiente == -1) Siguiente = id //cola vacia
+		else Agregar(C,id)>; //sino se agrega a la cola
+		<await(Siguiente == id)>;
+		Imprimir(documento);
+		<if(empty(C)) Siguiente = -1 //si esta vacia la marco
+		else Siguiente = SacarIDMin(C)>; //si no esta vacia saca el proximo ID mas chico
+	}
+}
+
+//d) Modifique la solución de (a) para el caso en que se deba respetar estrictamente el orden dado
+//por el identificador del proceso (la persona X no puede usar la impresora hasta que no haya terminado de usarla la persona X-1).
+
+boolean Listos[N: false];
+
+Process Personas [id: 0..N-1]{
+	while(true){
+		if(id > 0) <await(Listos[id - 1])>; //si no soy el primero espero mi turno
+		Imprimir(documento);
+		<Listos[id] = true; //actualizo el listado de Listos
+		if(id = N-1) ResetearListos(Listos)> //si soy el ultimo reseteo los listos (ponerlos en false de nuevo)
+	}
+}
+
+//e) Modifique la solución de (b) para el caso en que además hay un proceso Coordinador que le indica a cada persona cuando puede usar la impresora.
+
+boolean Entrada[N: false];
+
+Process Personas [id: 0..N-1]{
+	while(true){
+		<await(Entrada[id])>; //si no estoy habilitado espero mi turno
+		Imprimir(documento);
+		<Entrada[id] = false;> //actualizo el listado de Listos
+	}
+}
+
+Process Coordinador::{
+	int idSeleccionada = -1;
+	while(true){
+		idSeleccionada = NumeroRandom(0, N-1);
+		Entrada[idSeleccionada] = true;
+		<await(not Entrada[idSeleccionada])> //espera hasta que el proceso termine
+	}
+}
+
+//6) Realice una solución concurrente de grano grueso (utilizando <> y/o <await B; S>) para el siguiente problema.
+//En un examen final hay P alumnos y 3 profesores. Cuando todos los alumnos han llegado comienza el examen.
+//Cada alumno resuelve su examen, lo entrega y espera a que alguno de los profesores lo corrija y le indique la nota.
+//Los profesores corrigen los exámenes respectando el orden en que los alumnos van entregando.
+
+int cantAlumnos = 0; colaEspera C; boolean Listos[N: false]; int termino = 0;
+
+Process Alumnos[id:0..P-1]{
+	<cantAlumnos++>;
+	<await(cantAlumnos == P)>
+	resolverExamen;
+	<EntregarExamen; Agregar(C, id)>;
+	<await(Listos[id])>;
+	RecibirNota;
+}
+
+Process Profesores[id:0..2]{
+    <while(termino <> P){
+        await(not Empty(C)); idAlumno = Sacar(C); termino++>
+        corrigeExamen;
+        entregarNota(idAlumno);
+        Listos[idAlumno] = true;
+    }
+}
+
+//CONSULTAR POR LA ACCION ATOMICA QUE EMPIEZA EN LA LECTUIRA DE LA CONDICION DEL WHILE Y TERMINA ANTES DEL FIN DEL WHILE
